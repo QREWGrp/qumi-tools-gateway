@@ -46,7 +46,7 @@ See [Write operations](docs/WRITE-OPERATIONS.md) and [Security policy](SECURITY.
 
 ## Technical overview
 
-A lightweight **public-source, no-login, no-database** HTTPS MCP gateway for web agents. It federates a **restricted read-only subset** of the Depot and npm CLIs through one endpoint. Engineers can connect from ChatGPT Web or other Streamable HTTP MCP clients, if their platform supports connecting to unauthenticated custom MCP endpoints.
+A lightweight **public-source, no-login, no-database** HTTPS MCP gateway for web agents. It federates read-only provider inspection and a constrained, approval-gated set of write operations for Depot, npm, Fly.io and IONOS. Engineers can connect from ChatGPT Web or other Streamable HTTP MCP clients, if their platform supports connecting to unauthenticated custom MCP endpoints.
 
 **Source:** [QREWGrp/qumi-tools-gateway](https://github.com/QREWGrp/qumi-tools-gateway) · **Publisher:** Qumi Teknolojis (trading name of QROO Inc.) · **Support:** support@qr-oo.com.
 
@@ -63,7 +63,7 @@ A lightweight **public-source, no-login, no-database** HTTPS MCP gateway for web
 | Fly.io | `fly_status`, `fly_machine_list`, `fly_checks_list`, `fly_releases`, `fly_logs` | `FLY_API_TOKEN` (prefer a read-only scoped Fly token) |
 | IONOS | `ionos_dns_zones`, `ionos_dns_zone`, `ionos_domains`, `ionos_ssl_certificates` | IONOS Hosting `X-API-Key`, format public-prefix.secret |
 
-For `fly_releases`, the gateway uses Fly's GraphQL read API; `fly_logs` uses Fly's documented *unversioned* recent-logs HTTP interface. Both interfaces may change and require live provider testing. `fly_checks_list` returns the health/check data exposed in Fly's Machine listing; absence of check metadata is reported as empty, **not evidence that health checks passed**. IONOS Domains API requires a tenant ID supplied as the `tenant_id` argument. This release does **not** implement general IONOS hosting/server inventory or write operations; additional official read-only endpoints can be added after verification.
+For `fly_releases`, the gateway uses Fly's GraphQL read API; `fly_logs` uses Fly's documented *unversioned* recent-logs HTTP interface. Both interfaces may change and require live provider testing. `fly_checks_list` returns the health/check data exposed in Fly's Machine listing; absence of check metadata is reported as empty, **not evidence that health checks passed**. IONOS Domains API requires a tenant ID supplied as the `tenant_id` argument. This release does **not** implement general IONOS hosting/server inventory; bounded IONOS DNS record writes are available through write_begin/write_execute.
 
 ### Exactly five active sessions across all Machines
 
@@ -152,4 +152,4 @@ No account-specific credentials or gateway tokens are stored in this repository.
 
 **Protocol support:** The server negotiates session-based MCP revisions `2025-03-26`, `2025-06-18` and `2025-11-25`. The stateless `2026-07-28` revision is not implemented and needs a separate compatibility adapter. This is an explicit compatibility limit, not a silent fallback.
 
-**Scope:** This gateway is intentionally anonymous and read-only. Public CLI discovery and limited read operations are provided, but arbitrary command execution, npm publishing and infrastructure-changing operations are disabled. Credentials remain memory-only per session. The five-sessions/IP cap is enforced **per instance**; deploy one Fly Machine and use an immediate replacement rollout to avoid multiple simultaneous session stores. A browser/tab close does not necessarily revoke an MCP session; call `session_end` or HTTP `DELETE`, otherwise idle/absolute expiration applies.
+**Scope:** This gateway is anonymous with read inspection and strictly allowlisted, approval-gated mutations. Arbitrary CLI execution and npm publishing remain disabled. Credentials and pending approvals remain in memory on one Fly coordinator. The maximum is five live sessions across all Machines, not five per instance. A browser/tab close does not necessarily revoke an MCP session; call `session_end` or HTTP `DELETE`, otherwise idle/absolute expiration applies.

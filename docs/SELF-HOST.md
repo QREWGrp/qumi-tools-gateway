@@ -59,6 +59,6 @@ See [Deploy on Fly.io](DEPLOY-FLY.md), which uses the repository root `Dockerfil
 
 ## MCP transport and session model
 
-The service currently supports Streamable HTTP with **server-issued MCP sessions**, explicit DELETE and `session_end` revocation, plus idle/absolute expiry. It is not yet a stateless-MCP gateway. CLI operations are intentionally restricted to documented read-only commands. Provider tokens can be entered through a one-time protected question; they remain only in process memory until session expiry or revocation.
+The service currently supports Streamable HTTP with **server-issued MCP sessions**, explicit DELETE and `session_end` revocation, plus idle/absolute expiry. It is not yet a stateless-MCP gateway. CLI operations are restricted to reviewed read commands and a small set of typed, user-confirmed writes. Arbitrary shell access, package installs, and unrestricted CLI flags remain prohibited. Provider tokens can be entered through a one-time protected question; they remain only in process memory until session expiry or revocation.
 
 Review [security policy](../SECURITY.md), [migration guide](MIGRATION.md) and [contribution guide](../CONTRIBUTING.md) before extending tool permissions.
