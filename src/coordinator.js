@@ -10,7 +10,7 @@ export function coordinatorConfig(env=process.env){
   return {fly:true,ready:true,local:machine===authority,authority,app};
 }
 export function coordinatorRoute(req,res,pathname,env=process.env){
-  if(pathname!=='/mcp'&&!pathname.startsWith('/credential/'))return false;
+  if(pathname!=='/mcp'&&!pathname.startsWith('/credential/')&&!pathname.startsWith('/approve/'))return false;
   const c=coordinatorConfig(env);
   if(!c.ready){res.writeHead(503,{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'10'});res.end(JSON.stringify({error:'MCP coordinator unavailable; configure MCP_COORDINATOR_MACHINE_ID'}));return true;}
   if(!c.fly||c.local)return false;

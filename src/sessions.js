@@ -72,7 +72,7 @@ export function closeSession(s) {
   for(const controller of s.abort)controller.abort();
   s.abort.clear();
   for(const buf of s.secrets.values())if(Buffer.isBuffer(buf))buf.fill(0);
-  s.secrets.clear(); s.pending.clear(); s.rateBuckets.clear();
+  s.secrets.clear(); s.pending.clear(); s.approvals?.clear(); s.rateBuckets.clear();
   sessions.delete(s.id);
 }
 export function prune() {

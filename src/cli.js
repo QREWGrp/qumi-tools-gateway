@@ -73,10 +73,24 @@ async function execute(session,provider,argv,{needsAuth=false}={}){
     fs.rmSync(dir,{recursive:true,force:true});
   }
 }
+export async function cliWrite(session,command,args){
+  if(!Array.isArray(args))throw Error('Invalid CLI args');
+  if(command==='npm'){
+    if(args[0]!=='dist-tag'||!['add','rm'].includes(args[1]))throw Error('NPM write not allowlisted');
+    const output=await execute(session,'npm',args,{needsAuth:true});
+    return {...output,readOnly:false};
+  }
+  if(command==='depot'){
+    if(args[0]!=='ci'||args[1]!=='cancel')throw Error('Depot write not allowlisted');
+    const output=await execute(session,'depot',args,{needsAuth:true});
+    return {...output,readOnly:false};
+  }
+  throw Error('Unsupported CLI write command');
+}
 export async function cliCatalog(session){
   return {sessions:sessionStatus(session),installedCommands:'discover with cli_help',
-    supported:['npm view','npm search','npm ping','npm whoami','Depot help','Depot list builds','Depot list projects',...flyOps,...ionosOps],
-    forbidden:'No arbitrary shell, install, run-script, publish, deploy, config, registry override or filesystem access',
+    supported:['npm view','npm search','npm ping','npm whoami','Depot help','Depot list builds','Depot list projects',...flyOps,...ionosOps,'write_begin','write_execute','fly_machine_start/stop/restart','ionos_dns_record_create/update/delete','npm_dist_tag_add/remove','depot_ci_cancel'],
+    forbidden:'No arbitrary shell, install, run-script, publish, deploy or user-selected registry/URL. Writes require a bounded operation and one-time browser confirmation.',
     note:'Depot read paths depend on installed Depot CLI version; unsupported CLI syntax is reported safely.'};
 }
 export async function cliHelp(session,{provider,command=[]}={}){

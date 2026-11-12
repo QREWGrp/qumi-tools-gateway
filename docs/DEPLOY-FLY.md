@@ -1,6 +1,6 @@
 # Fly.io deployment — Engineering MCP Gateway
 
-This is a **separate public read-only MCP app**, not part of a production QUMI application. It does not need an identity-provider account or database. The app uses a single instance, short-lived per-session credentials and a cap of five active MCP sessions per IP.
+This is a **separate public MCP app with typed, approval-gated writes**, not part of a production QUMI application. It does not need an identity-provider account or database. The app uses a single instance, short-lived per-session credentials and a cap of five active MCP sessions per IP.
 
 ## Diagnose the original Fly launch failure
 
@@ -115,3 +115,7 @@ This release configures `MAX_GLOBAL_SESSIONS='5'` and `MAX_SESSIONS_PER_IP='5'`.
 **Coordinator replacement:** A replacement Fly Machine receives a new ID; update `MCP_COORDINATOR_MACHINE_ID`, then restart/redeploy, explicitly expecting all in-memory sessions to expire. If the coordinator stops, the gateway fails closed instead of admitting sessions on a second Machine. This is intentionally not high-availability. Do not bypass the coordinator or run the app with this feature disabled on a multi-Machine Fly deployment.
 
 **Current limitations:** Five simultaneous sessions total can be restrictive for a public service; limits are shared across IPs, even independent users. Release and logs APIs are read-only and may change; verify response shape and permissions with real scoped tokens. The gateway does not perform IONOS hosting/VPS inventory or mutating actions.
+
+## Provider writes in v0.2.0
+
+Use credential_begin for a per-session Fly, IONOS, Depot or npm token. The provider token must have write privileges for the specific target; a read-only token remains read-only. Use write_begin to prepare a validated operation, confirm the exact target through the short-lived HTTPS page, then call write_execute with the approval ID. No arbitrary CLI commands or selectable HTTP endpoints are exposed. See [Write operations](WRITE-OPERATIONS.md). Do not enable public writes until browser approval, coordinator routing, synthetic mutation rejection and live provider token tests pass.

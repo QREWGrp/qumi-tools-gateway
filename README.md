@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) · [Self-host free](docs/SELF-HOST.md) · [Fly deployment](docs/DEPLOY-FLY.md) · [Migration guide](docs/MIGRATION.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [GitHub source](https://github.com/QREWGrp/qumi-tools-gateway)
 
-A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGPT Web and other compatible AI agents. It offers a restricted, **read-only** subset of Depot/npm CLI tools plus fixed-endpoint Fly.io and IONOS API reads, with no identity-provider integration, user database, shared provider tokens, or persistent secret vault.
+A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGPT Web and other compatible AI agents. It offers bounded **read/write** operations for Depot, npm, Fly.io and IONOS; writes require an upstream-permitted session token and a one-time browser confirmation, with no identity-provider integration, user database, shared provider tokens, or persistent secret vault.
 
 **Get started in three steps:** **fork or clone** → **run locally or deploy to your HTTPS host** → **connect the MCP URL from a compatible agent**. See [deployment](docs/DEPLOY-FLY.md) for the exact Docker/Fly setup and [migration](docs/MIGRATION.md) if you're moving from local CLI bridge plugins.
 
@@ -23,9 +23,26 @@ A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGP
 | Your hosted gateway | Deploy with Docker or Fly.io and connect `https://your-host/mcp` | Session-scoped bearer IDs and optional browser-provisioned provider tokens |
 | A public gateway operated by somebody else | Connect only after independently verifying the operator, endpoint, security and capabilities | Never hand over provider tokens to an untrusted host |
 
-**Important boundaries:** This is not an anonymous remote terminal. It does not run arbitrary shell commands, deploy infrastructure, install packages, or publish npm packages. The maximum is **five active sessions total, across all Machines when the coordinator is configured**, with per-IP and per-session rate limits, short-lived credentials, and explicit MCP session termination. The gateway does not automatically read an agent's personal password manager or cloud vault.
+**Important boundaries:** This is not an anonymous remote terminal. It does not run arbitrary shell commands, install packages, or publish npm packages. Narrowly defined provider write tools require one-time confirmation. The maximum is **five active sessions total, across all Machines when the coordinator is configured**, with per-IP and per-session rate limits, short-lived credentials, and explicit MCP session termination. The gateway does not automatically read an agent's personal password manager or cloud vault.
 
 ---
+
+## Bounded read and write operations (v0.2.0)
+
+The provider's token decides upstream permissions. A read-only token remains read-only. The gateway separately confines target IDs, argument types, command families, allowed hosts, session limits, and operator confirmations. It never becomes an arbitrary remote shell.
+
+| Provider | Bounded write operations |
+|---|---|
+| Fly.io | Start, stop or restart a specified Machine in another app (the gateway blocks modification of itself) |
+| IONOS Hosting | Create, update or delete one DNS record with typed name, address, record ID and TTL |
+| npm | Add or remove a distribution tag for an exact package/version |
+| Depot | Cancel one specified CI run within an organization |
+
+**Write workflow:** Use credential_begin to connect a token privately; call write_begin with operation and args to receive an expiring approval URL and approval ID; approve the displayed operation and target through the HTTPS page; then call write_execute with that approval ID. The approval is consumed before invoking the provider and cannot authorize another target. The session closes/expiry erases pending approvals.
+
+**Important:** Browser approval is an extra explicit user confirmation, not an identity provider or cryptographic proof of human presence. Provider-scoped credentials and careful user review remain essential. The gateway imposes five **total** active sessions across all Fly Machines via a single session coordinator.
+
+See [Write operations](docs/WRITE-OPERATIONS.md) and [Security policy](SECURITY.md). This is source implementation awaiting end-to-end Docker, live provider and ChatGPT Web acceptance.
 
 ## Technical overview
 
