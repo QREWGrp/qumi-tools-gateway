@@ -64,3 +64,10 @@ Use `credential_forget`, `session_end`, or HTTP `DELETE /mcp` to terminate acces
 - [ ] Unsupported local bridge workflows remain routed to appropriately authorized tools
 
 **Questions:** [Open an issue](https://github.com/QREWGrp/qumi-tools-gateway/issues) for bugs and non-sensitive feature requests; send vulnerabilities privately per [SECURITY.md](../SECURITY.md).
+
+
+## v0.2.0 migration: multi-Machine session coordination
+
+Before switching a v0.1.0 app with two or more Fly Machines to v0.2.0, select a healthy coordinator with `fly machine list -a qumi-tools-gateway`, configure `MCP_COORDINATOR_MACHINE_ID` in Fly app secrets, and deploy the new release. The maximum is now **five active sessions globally**; it was previously **five per IP per Machine**. Existing sessions cannot be migrated because the gateway intentionally has no durable session database. A restart revokes them.
+
+The new Fly and IONOS provider credentials are supplied through the same one-time encrypted credential question as npm/Depot. Fly requires a Fly access token with read-only permissions; IONOS Hosting APIs require the `X-API-Key` format. Provider read operations are fixed and do not accept arbitrary URLs or write methods. See the README's v0.2.0 operations table.

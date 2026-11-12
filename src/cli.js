@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {sessionStatus} from './sessions.js';
+import {flyOps,ionosOps} from './providers.js';
 
 let runningCommands=0;
 const MAX_RUNNING_COMMANDS=8;
@@ -74,7 +75,7 @@ async function execute(session,provider,argv,{needsAuth=false}={}){
 }
 export async function cliCatalog(session){
   return {sessions:sessionStatus(session),installedCommands:'discover with cli_help',
-    supported:['npm view','npm search','npm ping','npm whoami','Depot help','Depot list builds','Depot list projects'],
+    supported:['npm view','npm search','npm ping','npm whoami','Depot help','Depot list builds','Depot list projects',...flyOps,...ionosOps],
     forbidden:'No arbitrary shell, install, run-script, publish, deploy, config, registry override or filesystem access',
     note:'Depot read paths depend on installed Depot CLI version; unsupported CLI syntax is reported safely.'};
 }

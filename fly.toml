@@ -11,7 +11,7 @@ primary_region = 'ams'
 
 [env]
   BIND_HOST = '0.0.0.0'
-  MAX_GLOBAL_SESSIONS = '200'
+  MAX_GLOBAL_SESSIONS = '5'
   MAX_REQUESTS_PER_MINUTE = '60'
   MAX_SESSIONS_PER_IP = '5'
   MAX_SESSION_REQUESTS_PER_MINUTE = '30'
@@ -37,7 +37,7 @@ primary_region = 'ams'
     timeout = '5s'
     grace_period = '15s'
     method = 'GET'
-    path = '/healthz'
+    path = '/readyz'
 
 [[vm]]
   memory = '512mb'

@@ -55,7 +55,8 @@ test('tool registry, restricted CLI help, mutation and arbitrary command refusal
  const g=await start();try{
   const {session}=await initialize(g.base);
   const list=await (await call(g.base,'tools/list',{},session)).json();
-  assert.deepEqual(list.result.tools.map(t=>t.name),['gateway_status','cli_catalog','cli_help','cli_read','credential_begin','credential_forget','session_end']);
+  assert.deepEqual(list.result.tools.slice(0,7).map(t=>t.name),['gateway_status','cli_catalog','cli_help','cli_read','credential_begin','credential_forget','session_end']);
+  for(const name of ['fly_status','fly_machine_list','fly_checks_list','fly_releases','fly_logs','ionos_dns_zones','ionos_dns_zone','ionos_domains','ionos_ssl_certificates'])assert.ok(list.result.tools.some(t=>t.name===name),name);
   const help=await (await call(g.base,'tools/call',{name:'cli_help',arguments:{provider:'npm'}},session)).json();
   assert.equal(help.result.isError,false,JSON.stringify(help.result));
   assert.match(help.result.content[0].text,/Usage|npm/i);

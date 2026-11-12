@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) · [Self-host free](docs/SELF-HOST.md) · [Fly deployment](docs/DEPLOY-FLY.md) · [Migration guide](docs/MIGRATION.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [GitHub source](https://github.com/QREWGrp/qumi-tools-gateway)
 
-A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGPT Web and other compatible AI agents. It runs a restricted, **read-only** subset of the Depot and npm CLIs, with no identity-provider integration, user database, shared provider tokens, or persistent secret vault.
+A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGPT Web and other compatible AI agents. It offers a restricted, **read-only** subset of Depot/npm CLI tools plus fixed-endpoint Fly.io and IONOS API reads, with no identity-provider integration, user database, shared provider tokens, or persistent secret vault.
 
 **Get started in three steps:** **fork or clone** → **run locally or deploy to your HTTPS host** → **connect the MCP URL from a compatible agent**. See [deployment](docs/DEPLOY-FLY.md) for the exact Docker/Fly setup and [migration](docs/MIGRATION.md) if you're moving from local CLI bridge plugins.
 
@@ -23,7 +23,7 @@ A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGP
 | Your hosted gateway | Deploy with Docker or Fly.io and connect `https://your-host/mcp` | Session-scoped bearer IDs and optional browser-provisioned provider tokens |
 | A public gateway operated by somebody else | Connect only after independently verifying the operator, endpoint, security and capabilities | Never hand over provider tokens to an untrusted host |
 
-**Important boundaries:** This is not an anonymous remote terminal. It does not run arbitrary shell commands, deploy infrastructure, install packages, or publish npm packages. The maximum is **five active sessions per IP per instance**, with per-IP and per-session rate limits, short-lived credentials, and explicit MCP session termination. The gateway does not automatically read an agent's personal password manager or cloud vault.
+**Important boundaries:** This is not an anonymous remote terminal. It does not run arbitrary shell commands, deploy infrastructure, install packages, or publish npm packages. The maximum is **five active sessions total, across all Machines when the coordinator is configured**, with per-IP and per-session rate limits, short-lived credentials, and explicit MCP session termination. The gateway does not automatically read an agent's personal password manager or cloud vault.
 
 ---
 
@@ -35,9 +35,30 @@ A lightweight **public-source, no-login, no-database** HTTPS MCP gateway for web
 
 > **Security boundary:** a public, anonymous MCP gateway must not be an arbitrary remote shell. The gateway deliberately rejects `npm install`, `npm run`, `npm publish`, `depot build`, deployment, arbitrary file paths, user-selected registries and other state-changing commands. It is not yet a replacement for the full local bridges. The complete local engineering plugins remain at [QREWGrp/qumi-tools](https://github.com/QREWGrp/qumi-tools).
 
+## v0.2.0: Four providers and one authoritative session counter
+
+**QUMI Gateway v0.2.0 supports Depot, npm, Fly.io and IONOS using one HTTPS MCP endpoint.** Fly and IONOS are implemented as vetted read-only API adapters—not an arbitrary remote shell or a general-purpose CLI. All provider credentials are entered using the same session-specific encrypted HTTPS question. The gateway never requires a login service or persistent user database.
+
+| Provider | Read-only operations | Session credential |
+|---|---|---|
+| npm | `npm_ping`, `npm_view`, `npm_search`, `npm_whoami` | npm token for `whoami` |
+| Depot | CLI help, project/build listings | `DEPOT_TOKEN` |
+| Fly.io | `fly_status`, `fly_machine_list`, `fly_checks_list`, `fly_releases`, `fly_logs` | `FLY_API_TOKEN` (prefer a read-only scoped Fly token) |
+| IONOS | `ionos_dns_zones`, `ionos_dns_zone`, `ionos_domains`, `ionos_ssl_certificates` | IONOS Hosting `X-API-Key`, format public-prefix.secret |
+
+For `fly_releases`, the gateway uses Fly's GraphQL read API; `fly_logs` uses Fly's documented *unversioned* recent-logs HTTP interface. Both interfaces may change and require live provider testing. `fly_checks_list` returns the health/check data exposed in Fly's Machine listing; absence of check metadata is reported as empty, **not evidence that health checks passed**. IONOS Domains API requires a tenant ID supplied as the `tenant_id` argument. This release does **not** implement general IONOS hosting/server inventory or write operations; additional official read-only endpoints can be added after verification.
+
+### Exactly five active sessions across all Machines
+
+The app must set `MCP_COORDINATOR_MACHINE_ID` to the ID of **one existing Fly Machine**. Other Machines are ingress-only: they send `Fly-Replay` responses so Fly Proxy delivers every `/mcp` and `/credential/*` request to the same coordinator. That Machine alone holds the memory-only session map and per-IP counters. As a second safeguard, `MAX_GLOBAL_SESSIONS` is capped **in code at five**, even if an environment variable requests a larger value. A sixth session from **any IP** gets HTTP 429. These are five total active sessions, not five per Machine.
+
+**Important:** Routing requires a stable coordinator ID. If the Machine is removed or replaced, all outstanding sessions must be treated as invalid and the target ID updated. The gateway fails closed while that ID is missing or invalid. This design has a single coordinator, not high-availability failover. It avoids storing provider credentials in a database or replicating them across multiple Machines.
+
+To deploy safely, use the [Fly coordinator rollout instructions](docs/DEPLOY-FLY.md#v020-two-or-more-machines-one-global-five-session-cap) **before starting the v0.2.0 application**. Do not deploy v0.2.0 to two Machines before configuring the coordinator. `GET /readyz` returns 503 until the configuration is valid; normal liveness remains at `/healthz`.
+
 ## First run: 1 → 2 → 3
 
-1. **Deploy once:** From this repository, create an independent Fly app and deploy the Dockerfile via `fly.toml` (see [Fly deployment](docs/DEPLOY-FLY.md)). Do not deploy into the QUMI production application. The first supported deployment is **one Machine in one region** so in-memory session caps are global to the gateway instance.
+1. **Deploy once:** From this repository, create an independent Fly app and deploy the Dockerfile via `fly.toml` (see [Fly deployment](docs/DEPLOY-FLY.md)). Do not deploy into the QUMI production application. The first supported deployment is **one coordinator Machine with optional ingress Machines** so every session is counted once.
 2. **Connect from ChatGPT Web:** Add the actual deployed `https://<your-fly-app>.fly.dev/mcp` URL as a custom MCP server if the client permits it. No username/password or provider token is needed just to discover tools. Open a ChatGPT session, call `gateway_status` and `cli_catalog`.
 3. **Use tools:** `cli_help` and allowed public npm reads require no API key. For authenticated reads call `credential_begin({provider:"depot"})` or `credential_begin({provider:"npm"})`, open the short-lived HTTPS credential question, and have your password manager or personal secrets vault fill **that protected form**. Never paste tokens into chat. Call `session_end` when finished, or let the MCP client send HTTP `DELETE /mcp` with its session ID.
 

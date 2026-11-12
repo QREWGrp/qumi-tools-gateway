@@ -89,3 +89,29 @@ If the built container fails on Depot installation, inspect the exact Docker bui
 If Fly reports a failure after `sha256sum --check --status` at `tar -tzf /tmp/depot.tgz | grep -qx 'depot'`, the pinned archive downloaded and passed checksum validation but its executable entry name was not exactly `depot`. This is a packaging/layout mismatch, not a Fly authentication or image-registry issue.
 
 The downloader now uses `scripts/extract-depot.sh` to locate exactly one archive member ending in `/depot` (or `depot` at the root), extract only that entry into `/tmp/depot-release/depot`, and mark it executable. It deliberately **preserves** the upstream pinned version and digest. Run `npm test` for root/nested archive regressions, then deploy the image from the current `main` commit. The actual upstream binary image build still requires Fly or Docker acceptance.
+
+
+## v0.2.0: Two or more Machines, one global five-session cap
+
+The original gateway used independent process memory in each Machine, so requests could fail with `Session terminated` after landing on a different Machine and more than five aggregate sessions could be created. v0.2.0 uses Fly Proxy's `fly-replay` to route **every stateful request** to one authoritative Machine. This requires an explicit coordinator ID. No external user database or durable credential vault is added.
+
+**Before deploying v0.2.0:**
+
+```sh
+fly machine list -a qumi-tools-gateway
+# Choose the ID of an existing healthy Machine (example below is intentionally not a real ID).
+fly secrets set MCP_COORDINATOR_MACHINE_ID=<existing-machine-id> -a qumi-tools-gateway
+# Now deploy the reviewed v0.2.0 image:
+fly deploy -a qumi-tools-gateway --config fly.toml --dockerfile Dockerfile --remote-only
+fly checks list -a qumi-tools-gateway
+```
+
+PowerShell accepts these commands as separate lines. Replace the placeholder with the hexadecimal Machine ID shown by `fly machine list`; **never commit a guessed ID**. `fly secrets set` may trigger a rollout. Coordinate this with active users because **all sessions are ephemeral** and may be lost during deploy.
+
+This release configures `MAX_GLOBAL_SESSIONS='5'` and `MAX_SESSIONS_PER_IP='5'`. Both limits are enforced by the coordinator; six independent clients from six IPs must also be rejected after five sessions total. The `/readyz` Fly health check fails closed when the coordinator is missing or invalid; if it fails, inspect `fly logs` and `fly machine list`. The liveness path `/healthz` still works for diagnostics.
+
+**Two-Machine routing acceptance test:** From a real client, initialize five MCP sessions and verify the sixth returns 429, delete one and verify a new session can start. Route repeated `tools/list`, `gateway_status`, `credential_begin`, and `DELETE /mcp` requests through the public Fly hostname; none should produce `Session terminated` solely because traffic landed on a different Machine. Confirm the designated coordinator is running, and verify noncoordinator requests are replayed rather than processed locally. Do this with synthetic tokens only.
+
+**Coordinator replacement:** A replacement Fly Machine receives a new ID; update `MCP_COORDINATOR_MACHINE_ID`, then restart/redeploy, explicitly expecting all in-memory sessions to expire. If the coordinator stops, the gateway fails closed instead of admitting sessions on a second Machine. This is intentionally not high-availability. Do not bypass the coordinator or run the app with this feature disabled on a multi-Machine Fly deployment.
+
+**Current limitations:** Five simultaneous sessions total can be restrictive for a public service; limits are shared across IPs, even independent users. Release and logs APIs are read-only and may change; verify response shape and permissions with real scoped tokens. The gateway does not perform IONOS hosting/VPS inventory or mutating actions.
