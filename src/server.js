@@ -47,6 +47,10 @@ async function invoke(s,name,args){
 const server=http.createServer(async(req,res)=>{
  try{
   prune();
+  // Fly's internal health probe may not include the public Host or Fly-Client-IP.
+  // Only liveness is exempt; the MCP and credential paths keep all restrictions.
+  const pathname=new URL(req.url||'/',base).pathname;
+  if(pathname==='/healthz'&&req.method==='GET')return respond(res,200,{status:'ok',service:'engineering-mcp-gateway'});
   const ip=clientIp(req,trustFly);
   if(!ip)return respond(res,400,{error:'Client IP could not be verified'});
   const rate=rateLimit(ip);
@@ -54,8 +58,6 @@ const server=http.createServer(async(req,res)=>{
   const origin=req.headers.origin;
   if(origin && !allowedOrigins.has(origin))return respond(res,403,{error:'Origin denied'});
   if(req.headers.host!==publicUrl.host)return respond(res,403,{error:'Invalid gateway host'});
-  const pathname=new URL(req.url||'/',base).pathname;
-  if(pathname==='/healthz'&&req.method==='GET')return respond(res,200,{status:'ok',service:'engineering-mcp-gateway'});
   if(pathname==='/'&&req.method==='GET')return respond(res,200,{service:'Engineering CLI MCP Gateway',mcp:'/mcp',documentation:'https://github.com/QREWGrp/qumi-tools-gateway',mode:'public-discovery/read-only-execution',
     warning:'Anonymous sessions are not identities; commands are allowlisted, tokens stay in memory until session termination.'});
   if(pathname.startsWith('/credential/'))return await servePortal(req,res,pathname,base);
@@ -72,9 +74,13 @@ const server=http.createServer(async(req,res)=>{
   if(!rpc||Array.isArray(rpc)||rpc.jsonrpc!=='2.0'||typeof rpc.method!=='string')return respond(res,400,error(rpc?.id??null,-32600,'Invalid Request'));
   if(rpc.method==='initialize'){
     if(id)return respond(res,400,error(rpc.id??null,-32600,'Initialize must not include existing session ID'));
+    // Negotiate only compatible session-oriented protocol revisions. The 2026 stateless
+    // revision requires a separate adapter and is intentionally not advertised here.
+    const chosenVersion=rpc.params?.protocolVersion;
+    if(!['2025-03-26','2025-06-18','2025-11-25'].includes(chosenVersion))
+      return respond(res,200,error(rpc.id??null,-32602,'Unsupported MCP protocol revision; supported: 2025-03-26, 2025-06-18, 2025-11-25'));
     const created=newSession(ip);
     if(created.error)return respond(res,429,error(rpc.id??null,-32000,'Active session capacity reached'),{'retry-after':'30'});
-    const chosenVersion='2025-11-25';
     return respond(res,200,success(rpc.id,{protocolVersion:chosenVersion,capabilities:{tools:{listChanged:false}},serverInfo:{name:'engineering-mcp-gateway',version:'0.1.0'}}),{'MCP-Session-Id':created.session.id});
   }
   if(!id)return respond(res,400,error(rpc.id??null,-32000,'MCP-Session-Id required'));

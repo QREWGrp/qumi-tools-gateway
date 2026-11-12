@@ -15,6 +15,31 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run check
+      - name: Verify deployment files are present at repository root
+        run: |
+          test -f Dockerfile
+          test -f fly.toml
+          test -f src/server.js
+          test -f package.json
+      - name: Build production container with pinned Depot CLI
+        run: docker build --pull --platform linux/amd64 -t engineering-gateway:ci -f Dockerfile .
+      - name: Smoke test the built runtime container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -d --name engineering-gateway-ci -p 127.0.0.1:18080:8080 \
+            -e PUBLIC_BASE_URL=https://gateway-ci.invalid \
+            -e TRUST_FLY_PROXY=0 \
+            engineering-gateway:ci
+          trap 'docker rm -f engineering-gateway-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 25); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/healthz
+          curl -fsS -H 'Host: gateway-ci.invalid' -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{}}}' \
+            http://127.0.0.1:18080/mcp | grep '"protocolVersion":"2025-11-25"'
       - name: Refuse embedded credentials
         run: |
           if git ls-files | grep -Ei '(^|/)(\.env|\.npmrc|.*vault.*|.*\.pem|.*\.key)$'; then

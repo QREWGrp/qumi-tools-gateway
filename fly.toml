@@ -28,6 +28,15 @@ primary_region = "ams"
     soft_limit = 50
     hard_limit = 100
 
+# Internal Fly probes do not necessarily carry the public Host/Fly-Client-IP.
+# The /healthz route deliberately has no IP-bound MCP session requirement.
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "15s"
+  method = "GET"
+  timeout = "5s"
+  path = "/healthz"
+
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"

@@ -20,4 +20,6 @@ RUN useradd --system --uid 10001 --create-home gateway && chown -R gateway:gatew
 USER gateway
 ENV NODE_ENV=production PORT=8080 BIND_HOST=0.0.0.0 TRUST_FLY_PROXY=1
 EXPOSE 8080
+# Node makes the probe self-contained; no curl or shell tooling in the runtime.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node","src/server.js"]

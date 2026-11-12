@@ -97,3 +97,28 @@ test('credential portal hybrid encryption, single-use, session-only, revoke imme
   assert.equal((await call(g.base,'tools/list',{},session)).status,404);
  }finally{await g.stop();}
 });
+
+test('Fly internal liveness probe does not require public Host or Fly client-IP, while MCP still does',async()=>{
+ const g=await start({TRUST_FLY_PROXY:'1',ALLOW_TEST_FLY_HEADER:'1'});
+ try{
+  const internal=await fetch(g.base+'/healthz',{headers:{Host:'internal-healthcheck.invalid'}});
+  assert.equal(internal.status,200);
+  assert.equal((await internal.json()).status,'ok');
+  const mcp=await call(g.base,'tools/list',{},'invalid');
+  assert.equal(mcp.status,400);
+ }finally{await g.stop();}
+});
+test('negotiates supported session-based MCP revisions and rejects unsupported stateless version',async()=>{
+ const g=await start();
+ try{
+  for(const version of ['2025-03-26','2025-06-18','2025-11-25']){
+    const init=await call(g.base,'initialize',{protocolVersion:version,capabilities:{},clientInfo:{name:'test',version:'1'}});
+    const answer=await init.json();
+    assert.equal(init.status,200); assert.equal(answer.result.protocolVersion,version);
+    await fetch(g.base+'/mcp',{method:'DELETE',headers:{'mcp-session-id':init.headers.get('mcp-session-id')}});
+  }
+  const bad=await call(g.base,'initialize',{protocolVersion:'2026-07-28',capabilities:{}});
+  const message=await bad.json();assert.equal(message.error.code,-32602);
+  assert.equal(bad.headers.get('mcp-session-id'),null);
+ }finally{await g.stop();}
+});
