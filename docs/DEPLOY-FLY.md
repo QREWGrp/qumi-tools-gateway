@@ -83,3 +83,9 @@ The endpoint `https://qumi-tools-gateway.fly.dev/mcp` is a **target URL**, not p
 - **No deployment claims without evidence:** source validation, Docker build, Fly Machine health, provider authentication, and real ChatGPT Web compatibility are distinct gates.
 
 If the built container fails on Depot installation, inspect the exact Docker build log, verify the tagged Depot release and SHA-256, and fix the pinned values in a reviewed PR. **Never bypass checksum verification** to force a deployment.
+
+## Docker build fix: Depot archive entry name
+
+If Fly reports a failure after `sha256sum --check --status` at `tar -tzf /tmp/depot.tgz | grep -qx 'depot'`, the pinned archive downloaded and passed checksum validation but its executable entry name was not exactly `depot`. This is a packaging/layout mismatch, not a Fly authentication or image-registry issue.
+
+The downloader now uses `scripts/extract-depot.sh` to locate exactly one archive member ending in `/depot` (or `depot` at the root), extract only that entry into `/tmp/depot-release/depot`, and mark it executable. It deliberately **preserves** the upstream pinned version and digest. Run `npm test` for root/nested archive regressions, then deploy the image from the current `main` commit. The actual upstream binary image build still requires Fly or Docker acceptance.
