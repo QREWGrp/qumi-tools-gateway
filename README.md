@@ -1,4 +1,33 @@
-# Engineering MCP Gateway
+# Open-Source HTTPS Gateway for AI-Powered Agents
+
+**Use the gateway from your web-chat client—or fork and build your own.**
+
+> **BOOST YOUR BUILD FROM DAY ONE — Fork and build your self-hosted gateway for free.**  
+> **No credit card required to obtain, fork, study, or run the open-source software locally.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) · [Self-host free](docs/SELF-HOST.md) · [Fly deployment](docs/DEPLOY-FLY.md) · [Migration guide](docs/MIGRATION.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [GitHub source](https://github.com/QREWGrp/qumi-tools-gateway)
+
+A lightweight, public-source **Streamable HTTP MCP gateway** intended for ChatGPT Web and other compatible AI agents. It runs a restricted, **read-only** subset of the Depot and npm CLIs, with no identity-provider integration, user database, shared provider tokens, or persistent secret vault.
+
+**Get started in three steps:** **fork or clone** → **run locally or deploy to your HTTPS host** → **connect the MCP URL from a compatible agent**. See [deployment](docs/DEPLOY-FLY.md) for the exact Docker/Fly setup and [migration](docs/MIGRATION.md) if you're moving from local CLI bridge plugins.
+
+**Costs, clearly stated:** The **software** is free and licensed under MIT. Using GitHub to fork it and running it on your own computer require no payment to this project. A **public HTTPS host may charge**; Fly.io's current pricing and billing terms are independent of this repository and may require a payment method. An invitation to use the gateway does **not** guarantee that QUMI operates a free shared endpoint.
+
+**Publisher:** Qumi Teknolojis (trading name of QROO Inc.) · [QUMI](https://qumi.app) · [QROO](https://qr-oo.com) · Contact: support@qr-oo.com.
+
+## Choose your installation
+
+| Mode | What you get | Authentication/storage |
+|---|---|---|
+| Local development | Node.js MCP server on `http://127.0.0.1:8080/mcp` for testing | No account/database; test only, not public HTTPS |
+| Your hosted gateway | Deploy with Docker or Fly.io and connect `https://your-host/mcp` | Session-scoped bearer IDs and optional browser-provisioned provider tokens |
+| A public gateway operated by somebody else | Connect only after independently verifying the operator, endpoint, security and capabilities | Never hand over provider tokens to an untrusted host |
+
+**Important boundaries:** This is not an anonymous remote terminal. It does not run arbitrary shell commands, deploy infrastructure, install packages, or publish npm packages. The maximum is **five active sessions per IP per instance**, with per-IP and per-session rate limits, short-lived credentials, and explicit MCP session termination. The gateway does not automatically read an agent's personal password manager or cloud vault.
+
+---
+
+## Technical overview
 
 A lightweight **public-source, no-login, no-database** HTTPS MCP gateway for web agents. It federates a **restricted read-only subset** of the Depot and npm CLIs through one endpoint. Engineers can connect from ChatGPT Web or other Streamable HTTP MCP clients, if their platform supports connecting to unauthenticated custom MCP endpoints.
 
@@ -60,6 +89,29 @@ BIND_HOST=127.0.0.1 PORT=8080 npm start
 
 For localhost development, the local session bridge is at `http://127.0.0.1:8080/mcp`. For public service, Fly terminates HTTPS and sets the `Fly-Client-IP` header; the Node process itself listens on port 8080 over private HTTP. Never point production ChatGPT clients to an HTTP endpoint.
 
-## Deployment status
+## Deployment and readiness
 
-This public repository contains **deployable source and tests**, not an already-running Fly app. You must provision the Fly application, pay any hosting charges and verify the live MCP handshake separately. No provider tokens, user domains, account secrets, database credentials or Fly deployment tokens are committed.
+**The original Fly 'could not detect runtime or Dockerfile' error occurred because `main` initially contained only README.md while the actual app lived in an unmerged PR.** Do not deploy the default branch until it contains `Dockerfile`, `fly.toml`, `package.json` and `src/server.js`.
+
+For a first deployment, use an **explicit Dockerfile build**, not `fly launch` source detection. Full instructions: [docs/DEPLOY-FLY.md](docs/DEPLOY-FLY.md).
+
+```sh
+git clone https://github.com/QREWGrp/qumi-tools-gateway.git
+cd qumi-tools-gateway
+test -f Dockerfile && test -f fly.toml && test -f package.json
+fly auth login
+# One time only, if the app does not already exist:
+fly apps create qumi-tools-gateway --org qrguru
+fly config validate -c fly.toml
+fly deploy --app qumi-tools-gateway --config fly.toml --dockerfile Dockerfile --remote-only --strategy immediate
+fly scale count 1 -a qumi-tools-gateway
+fly status -a qumi-tools-gateway
+```
+
+No account-specific credentials or gateway tokens are stored in this repository. Its default Fly URL will be `https://qumi-tools-gateway.fly.dev/mcp` **only after an app by that name is created and deployed successfully**. There is no evidence of a running endpoint until Fly reports a healthy Machine and an external MCP handshake succeeds.
+
+**Validation levels:** Source tests can pass without Docker; GitHub CI must also successfully build the pinned Depot CLI into the image and smoke-test the container; production must pass Fly health checks and a live MCP acceptance test from a supported client. No live Fly build or external ChatGPT connection is claimed without results.
+
+**Protocol support:** The server negotiates session-based MCP revisions `2025-03-26`, `2025-06-18` and `2025-11-25`. The stateless `2026-07-28` revision is not implemented and needs a separate compatibility adapter. This is an explicit compatibility limit, not a silent fallback.
+
+**Scope:** This gateway is intentionally anonymous and read-only. Public CLI discovery and limited read operations are provided, but arbitrary command execution, npm publishing and infrastructure-changing operations are disabled. Credentials remain memory-only per session. The five-sessions/IP cap is enforced **per instance**; deploy one Fly Machine and use an immediate replacement rollout to avoid multiple simultaneous session stores. A browser/tab close does not necessarily revoke an MCP session; call `session_end` or HTTP `DELETE`, otherwise idle/absolute expiration applies.
