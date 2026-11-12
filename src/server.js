@@ -2,7 +2,11 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import {clientIp,limits,sessions,newSession,lookupSession,closeSession,prune,rateLimit,sessionRateLimit,sessionStatus} from './sessions.js';
 import {beginCredential,servePortal} from './portal.js';
-import {cliCatalog,cliHelp,cliRead} from './cli.js';
+import {cliCatalog,cliHelp,cliRead,cliWrite} from './cli.js';
+import {writeDefinitions} from './write.js';
+import {writeBegin,writeExecute,serveApproval} from './approvals.js';
+import {coordinatorRoute,coordinatorConfig} from './coordinator.js';
+import {providerRead,flyOps,ionosOps} from './providers.js';
 
 const port=Number(process.env.PORT||8080);
 const bind=process.env.BIND_HOST||'0.0.0.0';
@@ -25,19 +29,34 @@ const definitions=[
  {name:'cli_catalog',description:'Discover which safe npm/Depot operations are provided on this public read-only gateway.',inputSchema:{type:'object',properties:{}}},
  {name:'cli_help',description:'Inspect help from an installed npm or Depot CLI. Does not execute a user command.',inputSchema:{type:'object',properties:{provider:{type:'string',enum:['npm','depot']},command:{type:'array',items:{type:'string'}}},required:['provider']}},
  {name:'cli_read',description:'Execute one tightly allowlisted read-only CLI operation. No script execution, arbitrary shell or mutating operations.',inputSchema:{type:'object',properties:{operation:{type:'string',enum:['npm_ping','npm_view','npm_search','npm_whoami','depot_projects','depot_builds']},package:{type:'string'},field:{type:'string'},query:{type:'string'},project_id:{type:'string'}},required:['operation']}},
- {name:'credential_begin',description:'Request a secure HTTPS question for a user-supplied Depot/npm token. NEVER paste the token into chat; session-only RAM, 5-minute one-time link.',inputSchema:{type:'object',properties:{provider:{type:'string',enum:['npm','depot']}},required:['provider']}},
- {name:'credential_forget',description:'Erase a provider token from this session immediately.',inputSchema:{type:'object',properties:{provider:{type:'string',enum:['npm','depot']}},required:['provider']}},
+ {name:'credential_begin',description:'Request a secure HTTPS question for a session-scoped Depot/npm/Fly/IONOS credential. NEVER paste the token into chat; session-only RAM, 5-minute one-time link.',inputSchema:{type:'object',properties:{provider:{type:'string',enum:['npm','depot','fly','ionos']}},required:['provider']}},
+ {name:'credential_forget',description:'Erase a provider token from this session immediately.',inputSchema:{type:'object',properties:{provider:{type:'string',enum:['npm','depot','fly','ionos']}},required:['provider']}},
  {name:'session_end',description:'Immediately revoke the MCP session and erase any session-bound provider credentials.',inputSchema:{type:'object',properties:{}}}
 ];
+definitions.push({
+ name:'write_begin',description:'Prepare a specific provider WRITE. Requires a session token and an explicit, one-time human confirmation on a protected HTTPS page; this tool alone never mutates anything.',
+ inputSchema:{type:'object',properties:{operation:{type:'string',enum:writeDefinitions.map(x=>x.name)},args:{type:'object'}},required:['operation','args'],additionalProperties:false},
+ annotations:{readOnlyHint:true,destructiveHint:false}
+});
+definitions.push({
+ name:'write_execute',description:'Execute the specific previously approved operation exactly once. Provider token scope is enforced upstream; never retry automatically after an uncertain failure.',
+ inputSchema:{type:'object',properties:{approval_id:{type:'string'}},required:['approval_id'],additionalProperties:false},
+ annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false}
+});
+const providers=[...flyOps,...ionosOps];
+for(const name of providers){definitions.push({name,description:`Read-only ${name} via a fixed official provider endpoint; requires a session credential.`,inputSchema:{type:'object',properties:{app:{type:'string'},zone_id:{type:'string'},tenant_id:{type:'string'}},required:name.startsWith('fly_')?['app']:name==='ionos_dns_zone'?['zone_id']:name==='ionos_domains'?['tenant_id']:[]}});}
 async function invoke(s,name,args){
+ if(providers.includes(name))return providerRead(s,{...args,operation:name});
  if(name==='gateway_status')return sessionStatus(s);
  if(name==='cli_catalog')return cliCatalog(s);
  if(name==='cli_help')return cliHelp(s,args);
  if(name==='cli_read')return cliRead(s,args);
+ if(name==='write_begin')return writeBegin(s,args,base);
+ if(name==='write_execute')return writeExecute(s,args,{cliWrite});
  if(name==='credential_begin')return beginCredential(s,args.provider,base);
  if(name==='credential_forget'){
-  if(!['npm','depot'].includes(args.provider))throw Error('Invalid provider');
-  const name=args.provider==='npm'?'NPM_TOKEN':'DEPOT_TOKEN';
+  if(!['npm','depot','fly','ionos'].includes(args.provider))throw Error('Invalid provider');
+  const name=({npm:'NPM_TOKEN',depot:'DEPOT_TOKEN',fly:'FLY_API_TOKEN',ionos:'IONOS_API_KEY'})[args.provider];
   const buf=s.secrets.get(name);if(buf)buf.fill(0);s.secrets.delete(name);
   return {forgotten:true,provider:args.provider};
  }
@@ -51,6 +70,10 @@ const server=http.createServer(async(req,res)=>{
   // Only liveness is exempt; the MCP and credential paths keep all restrictions.
   const pathname=new URL(req.url||'/',base).pathname;
   if(pathname==='/healthz'&&req.method==='GET')return respond(res,200,{status:'ok',service:'engineering-mcp-gateway'});
+  if(pathname==='/readyz'&&req.method==='GET'){
+    const c=coordinatorConfig();return respond(res,c.ready?200:503,{status:c.ready?'ready':'unavailable',coordinatorConfigured:c.ready});
+  }
+  if(coordinatorRoute(req,res,pathname))return;
   const ip=clientIp(req,trustFly);
   if(!ip)return respond(res,400,{error:'Client IP could not be verified'});
   const rate=rateLimit(ip);
@@ -58,9 +81,10 @@ const server=http.createServer(async(req,res)=>{
   const origin=req.headers.origin;
   if(origin && !allowedOrigins.has(origin))return respond(res,403,{error:'Origin denied'});
   if(req.headers.host!==publicUrl.host)return respond(res,403,{error:'Invalid gateway host'});
-  if(pathname==='/'&&req.method==='GET')return respond(res,200,{service:'Engineering CLI MCP Gateway',mcp:'/mcp',documentation:'https://github.com/QREWGrp/qumi-tools-gateway',mode:'public-discovery/read-only-execution',
+  if(pathname==='/'&&req.method==='GET')return respond(res,200,{service:'Engineering CLI MCP Gateway',mcp:'/mcp',documentation:'https://github.com/QREWGrp/qumi-tools-gateway',mode:'public-discovery/typed-read-write-with-approval',
     warning:'Anonymous sessions are not identities; commands are allowlisted, tokens stay in memory until session termination.'});
   if(pathname.startsWith('/credential/'))return await servePortal(req,res,pathname,base);
+  if(pathname.startsWith('/approve/'))return await serveApproval(req,res,pathname,base,sessions);
   if(pathname!=='/mcp')return respond(res,404,{error:'Not found'});
   if(req.method==='GET')return respond(res,405,{error:'SSE GET not supported'},{Allow:'POST, DELETE'});
   const id=req.headers['mcp-session-id'];
@@ -81,7 +105,7 @@ const server=http.createServer(async(req,res)=>{
       return respond(res,200,error(rpc.id??null,-32602,'Unsupported MCP protocol revision; supported: 2025-03-26, 2025-06-18, 2025-11-25'));
     const created=newSession(ip);
     if(created.error)return respond(res,429,error(rpc.id??null,-32000,'Active session capacity reached'),{'retry-after':'30'});
-    return respond(res,200,success(rpc.id,{protocolVersion:chosenVersion,capabilities:{tools:{listChanged:false}},serverInfo:{name:'engineering-mcp-gateway',version:'0.1.0'}}),{'MCP-Session-Id':created.session.id});
+    return respond(res,200,success(rpc.id,{protocolVersion:chosenVersion,capabilities:{tools:{listChanged:false}},serverInfo:{name:'engineering-mcp-gateway',version:'0.2.0-write-preview'}}),{'MCP-Session-Id':created.session.id});
   }
   if(!id)return respond(res,400,error(rpc.id??null,-32000,'MCP-Session-Id required'));
   const s=lookupSession(id,ip);if(!s)return respond(res,404,error(rpc.id??null,-32000,'Session not found or expired'));

@@ -2,14 +2,14 @@
 
 This guide is for engineers moving from the four local plugins in [QREWGrp/qumi-tools](https://github.com/QREWGrp/qumi-tools) to [QREWGrp/qumi-tools-gateway](https://github.com/QREWGrp/qumi-tools-gateway), or upgrading an earlier deployment of this gateway.
 
-**This is not an in-place replacement for all local capabilities.** The publicly connectable gateway is deliberately **read-only** and offers a small allowlisted set of npm and Depot operations. Full local CLI access, IONOS domain modifications, Fly deployments, arbitrary package install/build scripts, and npm publishing still require an appropriately authorized agent environment or separately reviewed services.
+**This is not an in-place replacement for all local capabilities.** The publicly connectable gateway offers bounded read and write operations across four providers without unrestricted local CLI execution. Full local CLI access, IONOS domain modifications, Fly deployments, arbitrary package install/build scripts, and npm publishing still require an appropriately authorized agent environment or separately reviewed services.
 
 ## Feature mapping
 
 | Before | Hosted gateway | Action |
 |---|---|---|
 | Local MCP `stdio` (Node process in Codex/Claude/Desktop) | Streamable HTTP at `https://<your-host>/mcp` | Configure a new HTTP MCP connection in a client that supports it |
-| Depot Bridge CLI/SDK operations | Restricted `cli_help` and read-only Depot calls | Keep local Depot Bridge for writes and unsupported SDK operations |
+| Depot Bridge CLI/SDK operations | Restricted `cli_help` and read-only Depot calls | Keep local Depot Bridge for builds and unsupported SDK actions; the gateway permits approval-gated CI run cancellation |
 | NPM Bridge full CLI | Allowlisted npm help, ping, view, search and authenticated whoami | Keep local NPM Bridge for scripts/install/publish |
 | IONOS Bridge | Not included in initial hosted gateway | Use official IONOS MCP or a separately reviewed gateway adapter |
 | Fly.io Bridge | Not included in initial hosted gateway | Use official Fly remote MCP where supported |
@@ -57,10 +57,17 @@ Use `credential_forget`, `session_end`, or HTTP `DELETE /mcp` to terminate acces
 - [ ] Exact source revision reviewed and tests run
 - [ ] Dockerfile and runtime at deployment root
 - [ ] HTTPS, correct `/mcp` endpoint and protocol negotiation verified
-- [ ] Anonymous scope/read-only restrictions understood
+- [ ] Anonymous scope, approved mutation schemas and browser confirmation understood
 - [ ] Five-session limit and rate limiter tested from real client IP
 - [ ] Credential question works without logging or returning tokens
 - [ ] Session end erases gateway credentials
 - [ ] Unsupported local bridge workflows remain routed to appropriately authorized tools
 
 **Questions:** [Open an issue](https://github.com/QREWGrp/qumi-tools-gateway/issues) for bugs and non-sensitive feature requests; send vulnerabilities privately per [SECURITY.md](../SECURITY.md).
+
+
+## v0.2.0 migration: multi-Machine session coordination
+
+Before switching a v0.1.0 app with two or more Fly Machines to v0.2.0, select a healthy coordinator with `fly machine list -a qumi-tools-gateway`, configure `MCP_COORDINATOR_MACHINE_ID` in Fly app secrets, and deploy the new release. The maximum is now **five active sessions globally**; it was previously **five per IP per Machine**. Existing sessions cannot be migrated because the gateway intentionally has no durable session database. A restart revokes them.
+
+The new Fly and IONOS provider credentials are supplied through the same one-time encrypted credential question as npm/Depot. Fly requires a Fly access token with read-only permissions; IONOS Hosting APIs require the `X-API-Key` format. Provider reads and reviewed mutation operations use fixed endpoints; writes additionally require write_begin and write_execute confirmation. See the README's v0.2.0 operations table.

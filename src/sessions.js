@@ -9,7 +9,7 @@ const number = (name, fallback, low, high) => {
 };
 export const limits = Object.freeze({
   perIp: number('MAX_SESSIONS_PER_IP', 5, 1, 5),
-  global: number('MAX_GLOBAL_SESSIONS', 200, 1, 1000),
+  global: number('MAX_GLOBAL_SESSIONS', 5, 1, 5),
   perMinute: number('MAX_REQUESTS_PER_MINUTE', 60, 5, 600),
   perSessionMinute: number('MAX_SESSION_REQUESTS_PER_MINUTE', 30, 5, 120),
   idleMs: number('SESSION_IDLE_MS', 10 * 60_000, 30_000, 60 * 60_000),
@@ -72,7 +72,7 @@ export function closeSession(s) {
   for(const controller of s.abort)controller.abort();
   s.abort.clear();
   for(const buf of s.secrets.values())if(Buffer.isBuffer(buf))buf.fill(0);
-  s.secrets.clear(); s.pending.clear(); s.rateBuckets.clear();
+  s.secrets.clear(); s.pending.clear(); s.approvals?.clear(); s.rateBuckets.clear();
   sessions.delete(s.id);
 }
 export function prune() {
@@ -83,6 +83,6 @@ export function prune() {
 }
 export function sessionStatus(s) {return {
   active:true,sessionExpiresInSeconds:Math.max(0,Math.ceil((limits.absoluteMs-(now()-s.createdAt))/1000)),
-  credentials:{depot:s.secrets.has('DEPOT_TOKEN'),npm:s.secrets.has('NPM_TOKEN')},
-  storage:'memory only',maxSessionsPerIP:limits.perIp,requestsPerMinutePerIP:limits.perMinute
+  credentials:{depot:s.secrets.has('DEPOT_TOKEN'),npm:s.secrets.has('NPM_TOKEN'),fly:s.secrets.has('FLY_API_TOKEN'),ionos:s.secrets.has('IONOS_API_KEY')},
+  storage:'memory only',activeSessionsGlobal:sessions.size,maxSessionsGlobal:limits.global,maxSessionsPerIP:limits.perIp,requestsPerMinutePerIP:limits.perMinute
 };}

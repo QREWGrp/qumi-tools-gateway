@@ -6,7 +6,7 @@ const keypair=()=>crypto.generateKeyPairSync('rsa',{modulusLength:3072,publicExp
 const encode=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=(res,code,data)=>{res.writeHead(code,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(data));};
 export function beginCredential(session,provider,base){
- if(!['depot','npm'].includes(provider))throw Error('provider must be depot or npm');
+ if(!['depot','npm','fly','ionos'].includes(provider))throw Error('provider must be depot, npm, fly or ionos');
  if(session.pending.size>=2)throw Error('Two credential requests already pending in this session');
  let totalPending=0;for(const current of sessions.values())totalPending+=current.pending.size;
  if(totalPending>=50)throw Error('Gateway credential question capacity reached');
@@ -65,7 +65,7 @@ export async function servePortal(req,res,pathname,base){
   plain.fill(0);aes.fill(0);
   if(typeof value!=='string'||value.length<8||value.length>8192||/[\r\n\x00]/.test(value))throw Error('Invalid credential');
   if(session.closed)throw Error('Session closed');
-  const key=p.provider==='depot'?'DEPOT_TOKEN':'NPM_TOKEN';
+  const key=({depot:'DEPOT_TOKEN',npm:'NPM_TOKEN',fly:'FLY_API_TOKEN',ionos:'IONOS_API_KEY'})[p.provider];
   const existing=session.secrets.get(key);if(existing)existing.fill(0);
   session.secrets.set(key,Buffer.from(value,'utf8'));
   p.used=true;session.pending.delete(code);
