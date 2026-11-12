@@ -1,0 +1,13 @@
+{
+  "name": "engineering-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public discovery, ephemeral-session, read-only MCP gateway for engineering CLIs",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/server.js && node --check src/sessions.js && node --check src/cli.js && node --check src/portal.js"
+  }
+}

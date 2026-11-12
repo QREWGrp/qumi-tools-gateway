@@ -1,0 +1,25 @@
+name: Gateway source tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run check
+      - name: Refuse embedded credentials
+        run: |
+          if git ls-files | grep -Ei '(^|/)(\.env|\.npmrc|.*vault.*|.*\.pem|.*\.key)$'; then
+            echo 'Sensitive file found'; exit 1
+          fi
+          if git grep -nIE '(github_pat_[A-Za-z0-9_]{35,}|ghp_[A-Za-z0-9]{35,}|-----BEGIN [A-Z ]+PRIVATE KEY-----)' -- ':!README.md'; then
+            echo 'Potential secret in source'; exit 1
+          fi

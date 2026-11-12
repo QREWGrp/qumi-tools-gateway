@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*vault*
+*.log
+coverage/
+.DS_Store
